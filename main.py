@@ -120,7 +120,7 @@ class StreamlitApp:
         """)
 
 # Инициализация компонентов
-db_handler = DatabaseHandler("C:\\TeamProject-master\\Russian_cuisine.db")
+db_handler = DatabaseHandler("Russian_cuisine.db")
 query = "SELECT * FROM 'Russian cuisine'"
 df = db_handler.load_data(query)
 
