@@ -1,0 +1,6 @@
+pandas
+sqlite3
+streamlit
+langchain
+openai
+faiss-cpu
