@@ -1,6 +1,9 @@
-pandas
-sqlite3
-streamlit
-langchain
-openai
-faiss-cpu
+pandas==2.2.2
+streamlit==1.35.0
+langchain==0.2.1
+langchain-community==0.2.1
+langchain-core==0.2.3
+langchain-openai==0.1.8
+langchain-text-splitters==0.2.0
+openai==1.30.5
+faiss-cpu==1.8.0
