@@ -2,13 +2,13 @@ import pandas as pd
 import sqlite3
 import streamlit as st
 import time
+
 from langchain.chains.llm import LLMChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, OpenAI
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_community.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
-
 
 class DatabaseHandler:
     def __init__(self, db_path):
@@ -42,16 +42,51 @@ class RecipeGenerator:
         texts = self.text_splitter.split_documents(documents)
         self.db = FAISS.from_documents(texts, self.embeddings)
 
+    def filter_recipes_by_ingredients(self, recipes, required_ingredients):
+        filtered_recipes = []
+        for recipe in recipes:
+            ingredients = recipe.metadata.get('ingredients', '').lower().split(', ')
+            if set(ingredients) == set(required_ingredients):
+                filtered_recipes.append(recipe)
+        return filtered_recipes
+
     def generate_recipe_description(self, query):
+        # Компонент извлечения: ищем релевантные документы
         relevants = self.db.similarity_search(query)
         if not relevants:
             return "Не удалось найти информацию о данном рецепте.", None
 
+        # Извлекаем данные рецепта из первого найденного документа
         recipe_data = relevants[0].metadata
         algorithm = recipe_data.get('algorithm', '')
         ingredients = recipe_data.get('ingredients', '')
         photo_url = recipe_data.get('photo', None)
 
+        # Генеративный компонент: создаем описание рецепта
+        response = self.chain.run(algorithm=algorithm, ingredients=ingredients)
+        return response, photo_url
+
+    def search_recipes_by_ingredients(self, query):
+        # Разделяем запрос пользователя на отдельные ингредиенты
+        required_ingredients = [ingredient.strip().lower() for ingredient in query.split('и')]
+
+        # Ищем релевантные рецепты
+        relevants = self.db.similarity_search(query)
+        if not relevants:
+            return "Не удалось найти информацию о данном рецепте.", None
+
+        # Фильтрация рецептов по ингредиентам
+        filtered_recipes = self.filter_recipes_by_ingredients(relevants, required_ingredients)
+        if not filtered_recipes:
+            return "Не удалось найти рецепт, который содержит только указанные ингредиенты.", None
+
+        # Извлекаем данные рецепта из первого найденного и подходящего документа
+        recipe_data = filtered_recipes[0].metadata
+        algorithm = recipe_data.get('algorithm', '')
+        ingredients = recipe_data.get('ingredients', '')
+        photo_url = recipe_data.get('photo', None)
+
+        # Генеративный компонент: создаем описание рецепта
         response = self.chain.run(algorithm=algorithm, ingredients=ingredients)
         return response, photo_url
 
@@ -64,12 +99,15 @@ class StreamlitApp:
         return url.replace('"', '')
 
     def run(self):
-        tab1, tab2 = st.tabs(["Поиск", "О ChefMate"])
+        tab1, tab2, tab3 = st.tabs(["Поиск", "Поиск по ингредиентам", "О ChefMate"])
 
         with tab1:
             self.run_search_tab()
 
         with tab2:
+            self.run_search_by_ingredients_tab()
+
+        with tab3:
             self.run_info_tab()
 
     def run_search_tab(self):
@@ -79,6 +117,21 @@ class StreamlitApp:
 
         if st.button("Получить рецепт"):
             response, photo_url = self.recipe_generator.generate_recipe_description(query)
+            avatar_url = "https://i.yapx.ru/XZyvC.png"
+            st.image(avatar_url, width=50)
+            st.write("ChefMate:")
+            st.write(response)
+            if photo_url:
+                clean_url = self.clean_url(photo_url)
+                st.image(clean_url, width=400)
+
+    def run_search_by_ingredients_tab(self):
+        st.title("Поиск рецептов по ингредиентам")
+
+        query = st.text_input("Введите ингредиенты которые у вас есть(например, 'майонез и хлеб'):")
+
+        if st.button("Поиск рецептов по ингредиентам"):
+            response, photo_url = self.recipe_generator.search_recipes_by_ingredients(query)
             avatar_url = "https://i.yapx.ru/XZyvC.png"
             st.image(avatar_url, width=50)
             st.write("ChefMate:")
@@ -126,7 +179,7 @@ df = db_handler.load_data(query)
 
 recipe_loader = RecipeLoader(df)
 api_key = st.secrets["api_keys"]["openai"]
-recipe_generator = RecipeGenerator(api_key=api_key, 
+recipe_generator = RecipeGenerator(api_key=api_key,
                                    prompt_template="""
 Используя данные из рецепта, включающие алгоритм: {algorithm} и ингредиенты: {ingredients}, опишите подробно, как приготовить блюдо, чтобы читатель мог легко следовать вашему описанию.
 """)
